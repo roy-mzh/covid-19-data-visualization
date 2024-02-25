@@ -1,0 +1,151 @@
+---
+title: "project"
+author: "MA Zhuoheng 1930026096"
+date: "2022/4/27"
+output: html_document
+---
+#### Installing packages
+```{r eval=FALSE}
+# Necessary packages
+pkgs <- c("sf","dplyr","magrittr","gganimate","lubridate","magick","nCov2019","RColorBrewer","devtools")
+
+#Installing packages
+install.packages(pkgs, lib = "D:/R-4.1.3/library")
+devtools::install_github("jl5000/barRacer")
+```
+#### Loading packages
+```{r warning=FALSE, message=FALSE}
+library(sf)
+library(ggplot2)
+library(dplyr)
+library(magrittr)
+library(gganimate)
+library(lubridate)
+library(magick)
+library(nCov2019)
+library(RColorBrewer)
+library(barRacer)
+```
+#### Query data from nCov2019
+**NOTICE:** Using UIC WIFI (any campus WIFI) to run this block would fail. Please run query() function without UIC WIFI (Hotspot is OK!)
+```{r warning=FALSE, message=FALSE}
+# Query data from nCov2019 by query()
+x=query()
+```
+#### 1. Chinese province confirmed case dynamic map
+```{r warning=FALSE, message=FALSE}
+# Get the table that contains historical data
+his_data <- x$historical$province
+
+#Select province in China and modify data mistake
+data <- filter(his_data, country == 'China')
+data$province[which(data$province == 'unknown')] <- 'taiwan'
+```
+
+```{r warning=FALSE, message=FALSE}
+# Get the date, province name, and confirm case  
+data_province = data.frame(time=data$date,Yname=data$province,cum_confirm = data$cases)
+
+# Transfer time data type to date
+data_province$time = ymd(data_province$time)
+```
+
+```{r warning=FALSE, message=FALSE}
+# Load province geometry data
+province = read_sf("E:/uic/Y3_0_xia/dataVis/project_dataset/rmap/省面.shp")
+
+# Transfer province name to lower capital
+province$Yname <- tolower(province$Yname)
+
+# Modify province name to keep consistency
+province$Yname[which(province$Yname == 'neimenggu')] <- 'inner mongolia'
+province$Yname[which(province$Yname == 'macao')] <- 'macau'
+province$Yname[which(province$Yname == 'hongkong')] <- 'hong kong'
+province$Yname[which(province$Yname == 'xizang')] <- 'tibet'
+province$Yname[which(province$Yname == 'shangdong')] <- 'shandong'
+
+province
+```
+
+```{r warning=FALSE, message=FALSE}
+data_province$cum_confirm = cut(data_province$cum_confirm, breaks=c(0,1,10,50,100,500,1000,5000,100000),labels=c("0","1-9","10-49","50-99","100-499","500-999","1000-4999",">=5000"),order = TRUE,include.lowest = TRUE, right = TRUE)
+```
+
+```{r warning=FALSE, message=FALSE}
+# Generate time array
+startTime <- ymd("2020-01-22")
+nowTime <- Sys.time()
+endTime <- date(nowTime) - ddays(2)
+timeLength <- interval(startTime, endTime) %>% time_length("day")
+mytime <- startTime + ddays(0:timeLength)
+```
+
+```{r warning=FALSE, message=FALSE}
+# Define map theme
+mytheme= theme(
+plot.title = element_text(face = "bold", hjust = 0.5, color = "black"),
+plot.subtitle = element_text(face = "bold", hjust = 0.5, size = 20, color = "red"),
+plot.caption = element_text(face = "bold", hjust = 1, color = "black"),
+legend.title = element_text(face = "bold", color = "black"),
+legend.text = element_text(face = "bold",color = "black"),
+legend.background = element_rect(colour = "black"),
+legend.key = element_rect(fill = NA),
+legend.position = "right",
+axis.ticks = element_blank(),
+axis.text = element_blank(),
+panel.background = element_blank(),
+panel.border = element_rect(color = "black", linetype = "solid", size = 1, fill = NA)
+)
+```
+
+```{r warning=FALSE, message=FALSE}
+# Generate map images in a rate of 30 days
+subtime <- c()
+for (i in seq(1,length(mytime),30)) {
+subtime <- append(subtime,mytime[i])
+# Select subset by time array
+data_time=subset(data_province,time==mytime[i])
+# Merge data by key 'Yname'
+province_data=province%>%left_join(data_time,by='Yname')
+
+# Generate map images and save
+p=ggplot(province_data)+
+geom_sf(aes(fill=cum_confirm))+
+coord_sf()+
+scale_fill_brewer(palette = "OrRd",direction = 1)+
+guides(fill=guide_legend(title = "Confirmed Number",reverse = 1))+
+labs(title = "cov-19 Data Visualization",
+subtitle=mytime[i],
+caption="Data Souce：package nCov2019")+
+mytheme
+ggsave(filename = paste0(date(mytime[i]),".png"),
+plot = p, path = "E:/uic/Y3_0_xia/dataVis/project_dataset/pic",
+width = 20, height = 20, units = "cm")
+}
+```
+
+```{r warning=FALSE, message=FALSE} 
+# Generate dynamic map
+animate_p=image_animate(image=image_read(path=paste0("E:/uic/Y3_0_xia/dataVis/project_dataset/pic","/",date(subtime),".png")))
+anim_save(filename = "疫情地图可视化动态图.gif",animation = animate_p,path="E:/uic/Y3_0_xia/dataVis/project_dataset/animate",fps=0.0001)
+```
+
+#### 2. Chinese Province Confirmed Case Dynamic Horizontal Bar Chart
+```{r warning=FALSE, message=FALSE}
+# Get the plot data
+data_province = data.frame(time=data$date,Yname=data$province,cum_confirm = data$cases)
+data_province$time = ymd(data_province$time)
+```
+
+```{r warning=FALSE, message=FALSE}
+# plot bar chart and save as .gif
+bar_chart_race(data_province,
+               cat_col = Yname,
+               val_col = cum_confirm,
+               time_col = time,
+               max_bars = 34,
+               duration = 30,
+               title = "China COVID19 Data")
+
+gganimate::anim_save("COVID19_Bar.gif")
+```
